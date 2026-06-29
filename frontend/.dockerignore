@@ -1,0 +1,10 @@
+node_modules
+.next
+.npm-cache
+.docker
+coverage
+*.log
+.env
+.env.*
+Dockerfile*
+!Dockerfile.prod
