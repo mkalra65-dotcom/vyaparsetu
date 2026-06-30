@@ -13,13 +13,17 @@ ALLOWED_MIME_TYPES = {
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 
 
-def validate_upload_metadata(file: UploadFile) -> None:
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS or file.content_type not in ALLOWED_MIME_TYPES:
+def validate_file_metadata(filename: str | None, mime_type: str | None) -> None:
+    suffix = Path(filename or "").suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS or mime_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF, JPG, JPEG, and PNG files are allowed",
         )
+
+
+def validate_upload_metadata(file: UploadFile) -> None:
+    validate_file_metadata(file.filename, file.content_type)
 
 
 def validate_file_size(file_size: int) -> None:
@@ -36,6 +40,14 @@ def build_upload_path(application_id: int, original_filename: str) -> tuple[Path
     suffix = Path(original_filename).suffix.lower()
     stored_filename = f"{uuid4().hex}{suffix}"
     return upload_dir / stored_filename, stored_filename
+
+
+def store_document_bytes(application_id: int, original_filename: str, content: bytes) -> tuple[str, str, int]:
+    file_size = len(content)
+    validate_file_size(file_size)
+    file_path, stored_filename = build_upload_path(application_id, original_filename)
+    file_path.write_bytes(content)
+    return str(file_path), stored_filename, file_size
 
 
 def remove_uploaded_file(file_path: str) -> None:

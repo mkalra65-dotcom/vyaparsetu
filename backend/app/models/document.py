@@ -21,6 +21,8 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    provider_media_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    source_channel: Mapped[str] = mapped_column(String(50), default="web", nullable=False)
     uploaded_by_user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,

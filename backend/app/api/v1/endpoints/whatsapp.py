@@ -9,6 +9,7 @@ from app.services.whatsapp.conversation import (
     MENU_MESSAGE,
     get_or_create_contact,
     get_or_create_session,
+    handle_media_message,
     handle_text_message,
     send_and_store_message,
     store_message,
@@ -69,6 +70,17 @@ async def receive_webhook(request: Request, db: DbSession) -> dict[str, int | st
                 display_name=display_name,
                 provider_message_id=provider_message_id,
                 message_body=body,
+                raw_payload=message,
+            )
+        elif message_type in {"document", "image"}:
+            handle_media_message(
+                db,
+                phone_number=phone_number,
+                wa_id=wa_id,
+                display_name=display_name,
+                provider_message_id=provider_message_id,
+                message_type=message_type,
+                media_payload=message.get(message_type) or {},
                 raw_payload=message,
             )
         else:

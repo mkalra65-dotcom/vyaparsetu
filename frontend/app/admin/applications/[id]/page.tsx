@@ -13,8 +13,13 @@ const allowedStatuses: Exclude<ApplicationStatus, "draft">[] = [
   "documents_pending",
   "under_review",
   "clarification_required",
+  "ready_for_filing",
+  "filing_in_progress",
+  "filed",
   "approved",
   "rejected",
+  "certificate_delivered",
+  "completed",
 ];
 
 const serviceLabels: Record<string, string> = {
@@ -92,6 +97,90 @@ export default function AdminApplicationReviewPage() {
       setSuccess("Notes updated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update notes");
+    }
+  }
+
+  async function createQuery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    const token = getToken();
+    if (!token) return;
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await adminApi.createGovernmentQuery(token, params.id, {
+        message: String(form.get("message") || ""),
+        required_document_type: String(form.get("required_document_type") || ""),
+        due_date: String(form.get("due_date") || ""),
+      });
+      setApplication(response);
+      setSuccess("Government query sent");
+      event.currentTarget.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create query");
+    }
+  }
+
+  async function createTimelineEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    const token = getToken();
+    if (!token) return;
+    const form = new FormData(event.currentTarget);
+    const eventType = String(form.get("event_type") || "");
+    try {
+      const response = await adminApi.createTimelineEvent(token, params.id, {
+        event_type: eventType,
+        title: eventType.replaceAll("_", " "),
+        description: String(form.get("description") || "") || null,
+      });
+      setApplication(response);
+      setSuccess("Timeline updated");
+      event.currentTarget.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create timeline event");
+    }
+  }
+
+  async function uploadCertificate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    const token = getToken();
+    if (!token) return;
+    const form = new FormData(event.currentTarget);
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      setError("Certificate file is required");
+      return;
+    }
+    try {
+      const response = await adminApi.uploadCertificate(
+        token,
+        params.id,
+        String(form.get("certificate_type") || ""),
+        file,
+      );
+      setApplication(response);
+      setSuccess("Certificate uploaded");
+      event.currentTarget.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload certificate");
+    }
+  }
+
+  async function deliverCertificate(certificateId: number) {
+    setError("");
+    setSuccess("");
+    const token = getToken();
+    if (!token) return;
+    try {
+      const response = await adminApi.deliverCertificate(token, certificateId);
+      setApplication(response);
+      setSuccess("Certificate delivered");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not deliver certificate");
     }
   }
 
@@ -214,6 +303,68 @@ export default function AdminApplicationReviewPage() {
                 </button>
               </form>
             </Card>
+
+            <Card>
+              <h2 className="text-xl font-bold text-ink">Government query</h2>
+              <form onSubmit={createQuery} className="mt-4 grid gap-4">
+                <Field label="Required document">
+                  <select name="required_document_type" className={inputClass} required>
+                    {application.required_documents.map((documentType) => (
+                      <option key={documentType} value={documentType}>
+                        {documentType.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Due date">
+                  <input name="due_date" type="date" className={inputClass} required />
+                </Field>
+                <Field label="Message">
+                  <textarea name="message" className={`${inputClass} min-h-24`} required />
+                </Field>
+                <button className="min-h-11 rounded-md bg-saffron px-4 py-2 text-sm font-semibold text-white">
+                  Send query
+                </button>
+              </form>
+            </Card>
+
+            <Card>
+              <h2 className="text-xl font-bold text-ink">Timeline action</h2>
+              <form onSubmit={createTimelineEvent} className="mt-4 grid gap-4">
+                <Field label="Event">
+                  <select name="event_type" className={inputClass}>
+                    <option value="review_started">Review started</option>
+                    <option value="filing_submitted">Filing submitted</option>
+                    <option value="certificate_delivered">Certificate delivered</option>
+                  </select>
+                </Field>
+                <Field label="Description">
+                  <input name="description" className={inputClass} />
+                </Field>
+                <button className="min-h-11 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white">
+                  Add event
+                </button>
+              </form>
+            </Card>
+
+            <Card>
+              <h2 className="text-xl font-bold text-ink">Certificate</h2>
+              <form onSubmit={uploadCertificate} className="mt-4 grid gap-4">
+                <Field label="Certificate type">
+                  <select name="certificate_type" className={inputClass}>
+                    <option value="gst_certificate">GST Certificate</option>
+                    <option value="fssai_certificate">FSSAI Certificate</option>
+                    <option value="udyam_certificate">Udyam Certificate</option>
+                  </select>
+                </Field>
+                <Field label="Certificate file">
+                  <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png" className={inputClass} required />
+                </Field>
+                <button className="min-h-11 rounded-md bg-leaf px-4 py-2 text-sm font-semibold text-white">
+                  Upload certificate
+                </button>
+              </form>
+            </Card>
           </div>
         </div>
 
@@ -245,7 +396,50 @@ export default function AdminApplicationReviewPage() {
           </Card>
 
           <Card>
-            <h2 className="text-xl font-bold text-ink">Audit log timeline</h2>
+            <h2 className="text-xl font-bold text-ink">Application timeline</h2>
+            <div className="mt-4 grid gap-3">
+              {application.timeline_events.length ? (
+                application.timeline_events.map((event) => (
+                  <div key={event.id} className="border-l-2 border-leaf pl-4">
+                    <p className="font-semibold text-ink">{event.title}</p>
+                    {event.description ? <p className="mt-1 text-sm text-slate-700">{event.description}</p> : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(event.created_at).toLocaleString("en-IN")} · {event.source_channel}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-600">No timeline events yet.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-xl font-bold text-ink">Government queries</h2>
+            <div className="mt-4 grid gap-3">
+              {application.government_queries.length ? (
+                application.government_queries.map((query) => (
+                  <div
+                    key={query.id}
+                    className={`rounded-md border p-3 ${
+                      query.is_overdue ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <p className="font-semibold text-ink">{query.required_document_type.replaceAll("_", " ")}</p>
+                    <p className="mt-1 text-sm text-slate-700">{query.message}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-600">
+                      Due {new Date(query.due_date).toLocaleDateString("en-IN")} · {query.status}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-600">No government queries.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-xl font-bold text-ink">Audit log</h2>
             <div className="mt-4">
               <AuditTimeline logs={application.audit_logs} />
             </div>
@@ -253,13 +447,72 @@ export default function AdminApplicationReviewPage() {
         </div>
 
         <Card className="mt-6 overflow-x-auto">
-          <h2 className="text-xl font-bold text-ink">Uploaded documents</h2>
+          <h2 className="text-xl font-bold text-ink">Certificates</h2>
           <table className="mt-4 w-full min-w-[760px] text-left text-sm">
             <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
               <tr>
                 <th className="py-3 pr-3">Type</th>
                 <th className="py-3 pr-3">Filename</th>
+                <th className="py-3 pr-3">Uploaded</th>
+                <th className="py-3 pr-3">Delivered</th>
+                <th className="py-3 pr-3">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {application.certificates.map((certificate) => (
+                <tr key={certificate.id} className="border-b border-slate-100">
+                  <td className="py-3 pr-3">{certificate.certificate_type.replaceAll("_", " ")}</td>
+                  <td className="py-3 pr-3">{certificate.original_filename}</td>
+                  <td className="py-3 pr-3">{new Date(certificate.uploaded_at).toLocaleString("en-IN")}</td>
+                  <td className="py-3 pr-3">
+                    {certificate.delivered_at ? new Date(certificate.delivered_at).toLocaleString("en-IN") : "Pending"}
+                  </td>
+                  <td className="py-3 pr-3">
+                    <button
+                      onClick={() => deliverCertificate(certificate.id)}
+                      className="font-semibold text-saffron disabled:text-slate-400"
+                      disabled={Boolean(certificate.delivered_at)}
+                    >
+                      Deliver Certificate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {application.certificates.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-600">No certificates uploaded yet.</p>
+          ) : null}
+        </Card>
+
+        <Card className="mt-6">
+          <h2 className="text-xl font-bold text-ink">Customer feedback</h2>
+          <div className="mt-4 grid gap-3">
+            {application.feedback.length ? (
+              application.feedback.map((feedback) => (
+                <div key={feedback.id} className="rounded-md border border-slate-200 p-3">
+                  <p className="font-semibold text-ink">Rating {feedback.rating}/5</p>
+                  {feedback.feedback ? <p className="mt-1 text-sm text-slate-700">{feedback.feedback}</p> : null}
+                  <p className="mt-1 text-xs text-slate-500">
+                    {new Date(feedback.created_at).toLocaleString("en-IN")}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-600">No feedback yet.</p>
+            )}
+          </div>
+        </Card>
+
+        <Card className="mt-6 overflow-x-auto">
+          <h2 className="text-xl font-bold text-ink">Uploaded documents</h2>
+          <table className="mt-4 w-full min-w-[860px] text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="py-3 pr-3">Type</th>
+                <th className="py-3 pr-3">Filename</th>
                 <th className="py-3 pr-3">MIME</th>
+                <th className="py-3 pr-3">Source</th>
                 <th className="py-3 pr-3">Size</th>
                 <th className="py-3 pr-3">Uploaded By</th>
                 <th className="py-3 pr-3">Action</th>
@@ -271,6 +524,7 @@ export default function AdminApplicationReviewPage() {
                   <td className="py-3 pr-3">{document.document_type.replaceAll("_", " ")}</td>
                   <td className="py-3 pr-3">{document.original_filename}</td>
                   <td className="py-3 pr-3">{document.mime_type}</td>
+                  <td className="py-3 pr-3">{document.source_channel}</td>
                   <td className="py-3 pr-3">{(document.file_size / 1024).toFixed(1)} KB</td>
                   <td className="py-3 pr-3">User #{document.uploaded_by_user_id}</td>
                   <td className="py-3 pr-3">

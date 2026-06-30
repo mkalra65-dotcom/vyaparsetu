@@ -5,8 +5,13 @@ export type ApplicationStatus =
   | "documents_pending"
   | "under_review"
   | "clarification_required"
+  | "ready_for_filing"
+  | "filing_in_progress"
+  | "filed"
   | "approved"
-  | "rejected";
+  | "rejected"
+  | "certificate_delivered"
+  | "completed";
 
 export type User = {
   id: number;
@@ -73,6 +78,8 @@ export type DocumentMetadata = {
   file_path: string;
   mime_type: string;
   file_size: number;
+  provider_media_id: string | null;
+  source_channel: "web" | "whatsapp" | string;
   uploaded_by_user_id: number;
   ai_processing_status: "pending" | "processed" | "manual_review";
   requires_attention: boolean;
@@ -93,6 +100,58 @@ export type AuditLog = {
   old_status: string | null;
   new_status: string | null;
   note: string | null;
+  created_at: string;
+};
+
+export type ApplicationTimelineEvent = {
+  id: number;
+  application_id: number;
+  event_type: string;
+  title: string;
+  description: string | null;
+  actor_user_id: number | null;
+  source_channel: string;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type GovernmentQuery = {
+  id: number;
+  application_id: number;
+  raised_by_user_id: number;
+  response_document_id: number | null;
+  message: string;
+  required_document_type: string;
+  due_date: string;
+  status: "open" | "responded" | "overdue" | string;
+  sent_to_customer_at: string | null;
+  responded_at: string | null;
+  overdue_alerted_at: string | null;
+  is_overdue: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Certificate = {
+  id: number;
+  application_id: number;
+  certificate_type: string;
+  original_filename: string;
+  stored_filename: string;
+  file_path: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: number;
+  uploaded_at: string;
+  delivered_at: string | null;
+};
+
+export type CustomerFeedback = {
+  id: number;
+  application_id: number;
+  user_id: number;
+  rating: number;
+  feedback: string | null;
   created_at: string;
 };
 
@@ -119,7 +178,20 @@ export type AdminDocumentMetadata = DocumentMetadata & {
 
 export type AdminApplicationDetail = Application & {
   documents: AdminDocumentMetadata[];
+  certificates: Certificate[];
+  feedback: CustomerFeedback[];
+  timeline_events: ApplicationTimelineEvent[];
+  government_queries: GovernmentQuery[];
   audit_logs: AuditLog[];
+};
+
+export type ApplicationTracking = {
+  application: Application;
+  timeline_events: ApplicationTimelineEvent[];
+  government_queries: GovernmentQuery[];
+  documents: DocumentMetadata[];
+  certificates: Certificate[];
+  feedback: CustomerFeedback[];
 };
 
 export type AdminApplicationListResponse = {

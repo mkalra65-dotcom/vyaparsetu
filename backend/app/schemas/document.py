@@ -12,6 +12,8 @@ class DocumentRead(BaseModel):
     file_path: str
     mime_type: str
     file_size: int
+    provider_media_id: str | None = None
+    source_channel: str
     uploaded_by_user_id: int
     ai_processing_status: str
     requires_attention: bool

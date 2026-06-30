@@ -1,14 +1,22 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
 from app.models.application import Application
+from app.models.document import Document
 from app.models.enums import ApplicationStatus, ServiceType
 from app.models.user import User
 from app.models.whatsapp import ConversationMessage, ConversationSession, WhatsAppContact
-from app.services.whatsapp.base import WhatsAppSendRequest
+from app.services.application_workflow import get_missing_required_documents, sync_document_status
+from app.services.audit import add_application_audit_log
+from app.services.document_storage import store_document_bytes, validate_file_metadata
+from app.services.notification_service import notify_application_event
+from app.services.timeline import add_timeline_event, find_open_query_for_document, mark_query_responded
+from app.services.whatsapp.base import WhatsAppMediaRequest, WhatsAppSendRequest
 from app.services.whatsapp.provider_factory import get_whatsapp_provider
 
 SERVICE_SELECTIONS: dict[str, ServiceType] = {
@@ -36,6 +44,30 @@ MENU_MESSAGE = (
     "3. Udyam Registration\n"
     "Reply with 1, 2, 3, GST, FSSAI, or Udyam."
 )
+
+DOCUMENT_TYPE_ALIASES = {
+    "aadhaar": "aadhaar_card",
+    "aadhar": "aadhaar_card",
+    "aadhaar card": "aadhaar_card",
+    "aadhar card": "aadhaar_card",
+    "pan": "pan_card",
+    "pan card": "pan_card",
+    "pan_card": "pan_card",
+    "business address proof": "business_address_proof",
+    "address proof": "business_address_proof",
+    "bank proof": "bank_account_proof",
+    "bank account proof": "bank_account_proof",
+    "photo id": "photo_id",
+    "photo_id": "photo_id",
+    "food business address proof": "food_business_address_proof",
+    "food safety management plan": "food_safety_management_plan",
+}
+
+MIME_EXTENSIONS = {
+    "application/pdf": ".pdf",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
 
 
 def normalize_phone_number(value: str) -> str:
@@ -149,6 +181,42 @@ def store_message(
     return message
 
 
+def _normalize_document_type(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = Path(value).stem.replace("_", " ").replace("-", " ")
+    normalized = " ".join(normalized.lower().split())
+    if normalized in DOCUMENT_TYPE_ALIASES:
+        return DOCUMENT_TYPE_ALIASES[normalized]
+    for label, document_type in DOCUMENT_TYPE_ALIASES.items():
+        if label in normalized:
+            return document_type
+    return None
+
+
+def _resolve_document_type(application: Application, caption: str | None, filename: str | None) -> str:
+    document_type = _normalize_document_type(caption) or _normalize_document_type(filename)
+    if document_type is not None:
+        return document_type
+    missing_documents = get_missing_required_documents(application)
+    if missing_documents:
+        return missing_documents[0]
+    return "whatsapp_document"
+
+
+def _build_media_filename(
+    *,
+    provider_media_id: str,
+    message_type: str,
+    mime_type: str,
+    filename: str | None,
+) -> str:
+    if filename:
+        return filename
+    suffix = MIME_EXTENSIONS.get(mime_type, "")
+    return f"whatsapp-{message_type}-{provider_media_id}{suffix}"
+
+
 def send_and_store_message(
     db: Session,
     *,
@@ -213,6 +281,13 @@ def create_draft_application(
     session.state = "draft_application_created"
     session.last_message_at = datetime.now(UTC)
     db.add(session)
+    add_timeline_event(
+        db,
+        application=application,
+        event_type="application_created",
+        actor_user_id=user.id,
+        source_channel="whatsapp",
+    )
     return application
 
 
@@ -284,5 +359,190 @@ def handle_text_message(
             f"Great. I created draft application #{application.id} for {label}. "
             "Next, our WhatsApp concierge will collect your details and documents."
         ),
+    )
+    return session
+
+
+def handle_media_message(
+    db: Session,
+    *,
+    phone_number: str,
+    wa_id: str | None,
+    display_name: str | None,
+    provider_message_id: str | None,
+    message_type: str,
+    media_payload: dict,
+    raw_payload: dict,
+) -> ConversationSession:
+    if provider_message_id:
+        existing_message = (
+            db.query(ConversationMessage)
+            .filter(
+                ConversationMessage.direction == "inbound",
+                ConversationMessage.provider_message_id == provider_message_id,
+            )
+            .first()
+        )
+        if existing_message and existing_message.session_id:
+            session = db.get(ConversationSession, existing_message.session_id)
+            if session is not None:
+                return session
+
+    contact = get_or_create_contact(
+        db,
+        phone_number=phone_number,
+        wa_id=wa_id,
+        display_name=display_name,
+    )
+    session = get_or_create_session(db, contact)
+    session.last_message_at = datetime.now(UTC)
+    db.add(session)
+
+    caption = media_payload.get("caption")
+    inbound_message = store_message(
+        db,
+        contact=contact,
+        session=session,
+        direction="inbound",
+        message_type=message_type,
+        body=caption,
+        provider_message_id=provider_message_id,
+        raw_payload=raw_payload,
+    )
+
+    if session.application_id is None:
+        session.state = "awaiting_service_selection"
+        send_and_store_message(
+            db,
+            contact=contact,
+            session=session,
+            message=(
+                "I received your document. Please choose the registration first so I can attach it correctly.\n"
+                f"{MENU_MESSAGE}"
+            ),
+        )
+        return session
+
+    application = db.get(Application, session.application_id)
+    if application is None:
+        session.application_id = None
+        session.state = "awaiting_service_selection"
+        send_and_store_message(
+            db,
+            contact=contact,
+            session=session,
+            message=f"I could not find an active application. {MENU_MESSAGE}",
+        )
+        return session
+
+    provider_media_id = media_payload.get("id")
+    if not provider_media_id:
+        inbound_message.status = "failed"
+        send_and_store_message(
+            db,
+            contact=contact,
+            session=session,
+            message="I could not read that document upload. Please send the file again.",
+        )
+        return session
+
+    try:
+        provider = get_whatsapp_provider()
+        media = provider.download_media(WhatsAppMediaRequest(provider_media_id=provider_media_id))
+        original_filename = _build_media_filename(
+            provider_media_id=provider_media_id,
+            message_type=message_type,
+            mime_type=media.mime_type,
+            filename=media.filename or media_payload.get("filename"),
+        )
+        validate_file_metadata(original_filename, media.mime_type)
+        file_path, stored_filename, file_size = store_document_bytes(application.id, original_filename, media.content)
+    except (FileNotFoundError, HTTPException) as exc:
+        inbound_message.status = "failed"
+        inbound_message.raw_payload = {
+            **(inbound_message.raw_payload or {}),
+            "provider_media_id": provider_media_id,
+            "error": str(getattr(exc, "detail", exc)),
+        }
+        db.add(inbound_message)
+        send_and_store_message(
+            db,
+            contact=contact,
+            session=session,
+            message="I could not store that document. Please send a PDF, JPG, JPEG, or PNG file under 10MB.",
+        )
+        return session
+    document_type = _resolve_document_type(application, caption, original_filename)
+
+    old_status = application.status
+    document = Document(
+        application=application,
+        document_type=document_type,
+        original_filename=original_filename,
+        stored_filename=stored_filename,
+        file_path=file_path,
+        mime_type=media.mime_type,
+        file_size=file_size,
+        provider_media_id=provider_media_id,
+        source_channel="whatsapp",
+        uploaded_by_user_id=application.owner_id,
+    )
+    db.add(document)
+    db.flush()
+
+    inbound_message.application_id = application.id
+    inbound_message.raw_payload = {
+        **(inbound_message.raw_payload or {}),
+        "document_id": document.id,
+        "provider_media_id": provider_media_id,
+    }
+    db.add(inbound_message)
+
+    sync_document_status(application)
+    add_application_audit_log(
+        db,
+        application_id=application.id,
+        actor_user_id=application.owner_id,
+        action="document_uploaded",
+        old_status=old_status,
+        new_status=application.status,
+        note=f"WhatsApp uploaded {document_type}: {original_filename}",
+    )
+    add_timeline_event(
+        db,
+        application=application,
+        event_type="document_uploaded",
+        actor_user_id=application.owner_id,
+        source_channel="whatsapp",
+        metadata={"document_id": document.id, "document_type": document_type, "detail": document_type.replace("_", " ")},
+    )
+    open_query = find_open_query_for_document(application, document_type)
+    if open_query is not None:
+        mark_query_responded(
+            db,
+            query=open_query,
+            document_id=document.id,
+            actor_user_id=application.owner_id,
+            source_channel="whatsapp",
+        )
+        add_application_audit_log(
+            db,
+            application_id=application.id,
+            actor_user_id=application.owner_id,
+            action="government_query_responded",
+            old_status=application.status,
+            new_status=application.status,
+            note=f"WhatsApp response to query #{open_query.id} with {document_type}",
+        )
+    notify_application_event(db, application, "document_uploaded")
+    if old_status != application.status:
+        notify_application_event(db, application, application.status)
+
+    session.state = "document_received"
+    send_and_store_message(
+        db,
+        contact=contact,
+        session=session,
+        message=f"Received {document_type.replace('_', ' ')}. Please send any remaining required documents.",
     )
     return session

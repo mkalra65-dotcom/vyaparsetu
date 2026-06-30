@@ -1,12 +1,17 @@
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.models.application import Application
+from app.models.certificate import Certificate
 from app.models.document import Document
+from app.models.feedback import CustomerFeedback
 from app.models.user import User
 from app.schemas.application import ApplicationCreate, ApplicationRead, ApplicationUpdate
+from app.schemas.certificate import CertificateRead, FeedbackCreate, FeedbackRead
 from app.schemas.document import DocumentRead
+from app.schemas.tracking import ApplicationTrackingRead
 from app.services.application_workflow import (
     get_missing_required_documents,
     get_required_documents,
@@ -14,12 +19,12 @@ from app.services.application_workflow import (
 )
 from app.services.audit import add_application_audit_log
 from app.services.document_storage import (
-    build_upload_path,
-    validate_file_size,
+    store_document_bytes,
     validate_upload_metadata,
 )
 from app.services.document_intelligence import process_document_extraction
 from app.services.notification_service import notify_admin, notify_application_event
+from app.services.timeline import add_timeline_event, find_open_query_for_document, mark_query_responded
 
 router = APIRouter()
 
@@ -163,6 +168,13 @@ def create_application(
         new_status=application.status,
         note="Application created",
     )
+    add_timeline_event(
+        db,
+        application=application,
+        event_type="application_created",
+        actor_user_id=current_user.id,
+        source_channel="web",
+    )
     notify_application_event(db, application, "application_created")
     if application.status == "documents_pending":
         notify_application_event(db, application, "documents_pending")
@@ -179,6 +191,99 @@ def read_application(
 ) -> dict:
     application = get_accessible_application(application_id, db, current_user)
     return serialize_application(application, current_user)
+
+
+@router.get("/{application_id}/tracking", response_model=ApplicationTrackingRead)
+def read_application_tracking(
+    application_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    application = get_accessible_application(application_id, db, current_user)
+    return {
+        "application": serialize_application(application, current_user),
+        "timeline_events": sorted(application.timeline_events, key=lambda event: event.created_at, reverse=True),
+        "government_queries": sorted(application.government_queries, key=lambda query: query.created_at, reverse=True),
+        "documents": sorted(application.documents, key=lambda document: document.created_at, reverse=True),
+        "certificates": sorted(application.certificates, key=lambda certificate: certificate.uploaded_at, reverse=True),
+        "feedback": sorted(application.feedback_entries, key=lambda feedback: feedback.created_at, reverse=True),
+    }
+
+
+def get_accessible_certificate(
+    certificate_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> Certificate:
+    certificate = db.get(Certificate, certificate_id)
+    if certificate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
+    if not current_user.is_admin and certificate.application.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    return certificate
+
+
+@router.get("/{application_id}/certificates", response_model=list[CertificateRead])
+def list_application_certificates(
+    application_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[Certificate]:
+    application = get_accessible_application(application_id, db, current_user)
+    return sorted(application.certificates, key=lambda certificate: certificate.uploaded_at, reverse=True)
+
+
+@router.get("/certificates/{certificate_id}/download")
+def download_certificate(
+    certificate_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> FileResponse:
+    certificate = get_accessible_certificate(certificate_id, db, current_user)
+    return FileResponse(
+        certificate.file_path,
+        media_type=certificate.mime_type,
+        filename=certificate.original_filename,
+    )
+
+
+@router.post("/{application_id}/feedback", response_model=FeedbackRead, status_code=status.HTTP_201_CREATED)
+def submit_application_feedback(
+    application_id: int,
+    feedback_in: FeedbackCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CustomerFeedback:
+    application = get_accessible_application(application_id, db, current_user)
+    feedback = CustomerFeedback(
+        application_id=application.id,
+        user_id=current_user.id,
+        rating=feedback_in.rating,
+        feedback=feedback_in.feedback,
+    )
+    db.add(feedback)
+    db.flush()
+    add_timeline_event(
+        db,
+        application=application,
+        event_type="feedback_received",
+        actor_user_id=current_user.id,
+        source_channel="web",
+        metadata={"rating": feedback.rating, "feedback_id": feedback.id},
+        send_whatsapp=False,
+    )
+    add_application_audit_log(
+        db,
+        application_id=application.id,
+        actor_user_id=current_user.id,
+        action="feedback_submitted",
+        old_status=application.status,
+        new_status=application.status,
+        note=f"Rating {feedback.rating}",
+    )
+    db.commit()
+    db.refresh(feedback)
+    return feedback
 
 
 @router.patch("/{application_id}", response_model=ApplicationRead)
@@ -238,12 +343,9 @@ async def upload_application_document(
     validate_upload_metadata(file)
 
     content = await file.read()
-    file_size = len(content)
-    validate_file_size(file_size)
 
     original_filename = file.filename or "upload"
-    file_path, stored_filename = build_upload_path(application_id, original_filename)
-    file_path.write_bytes(content)
+    file_path, stored_filename, file_size = store_document_bytes(application_id, original_filename, content)
 
     document = Document(
         application=application,
@@ -253,10 +355,12 @@ async def upload_application_document(
         file_path=str(file_path),
         mime_type=file.content_type or "application/octet-stream",
         file_size=file_size,
+        source_channel="web",
         uploaded_by_user_id=current_user.id,
     )
     old_status = application.status
     db.add(document)
+    db.flush()
     sync_document_status(application)
     add_application_audit_log(
         db,
@@ -267,6 +371,32 @@ async def upload_application_document(
         new_status=application.status,
         note=f"Uploaded {document_type}: {original_filename}",
     )
+    add_timeline_event(
+        db,
+        application=application,
+        event_type="document_uploaded",
+        actor_user_id=current_user.id,
+        source_channel="web",
+        metadata={"document_id": document.id, "document_type": document_type, "detail": document_type.replace("_", " ")},
+    )
+    open_query = find_open_query_for_document(application, document_type)
+    if open_query is not None:
+        mark_query_responded(
+            db,
+            query=open_query,
+            document_id=document.id,
+            actor_user_id=current_user.id,
+            source_channel="web",
+        )
+        add_application_audit_log(
+            db,
+            application_id=application.id,
+            actor_user_id=current_user.id,
+            action="government_query_responded",
+            old_status=application.status,
+            new_status=application.status,
+            note=f"Responded to query #{open_query.id} with {document_type}",
+        )
     notify_application_event(db, application, "document_uploaded")
     if old_status != application.status:
         notify_application_event(db, application, application.status)

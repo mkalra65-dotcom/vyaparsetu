@@ -6,7 +6,10 @@ import type {
   Application,
   ApplicationPayload,
   ApplicationStatus,
+  ApplicationTracking,
   AuditLog,
+  Certificate,
+  CustomerFeedback,
   DocumentMetadata,
   Lead,
   LeadStatus,
@@ -110,6 +113,10 @@ export const applicationApi = {
   async documents(token: string, id: string): Promise<DocumentMetadata[]> {
     return request<DocumentMetadata[]>(`/applications/${id}/documents`, { token });
   },
+
+  async tracking(token: string, id: string): Promise<ApplicationTracking> {
+    return request<ApplicationTracking>(`/applications/${id}/tracking`, { token });
+  },
 };
 
 export const documentApi = {
@@ -189,6 +196,59 @@ export const adminApi = {
     });
   },
 
+  async createTimelineEvent(
+    token: string,
+    id: string,
+    payload: { event_type: string; title: string; description?: string | null },
+  ): Promise<AdminApplicationDetail> {
+    return request<AdminApplicationDetail>(`/admin/applications/${id}/timeline-events`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createGovernmentQuery(
+    token: string,
+    id: string,
+    payload: { message: string; required_document_type: string; due_date: string },
+  ): Promise<AdminApplicationDetail> {
+    return request<AdminApplicationDetail>(`/admin/applications/${id}/queries`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async uploadCertificate(
+    token: string,
+    id: string,
+    certificateType: string,
+    file: File,
+  ): Promise<AdminApplicationDetail> {
+    const body = new FormData();
+    body.set("certificate_type", certificateType);
+    body.set("file", file);
+    return request<AdminApplicationDetail>(`/admin/applications/${id}/certificates/upload`, {
+      method: "POST",
+      token,
+      isFormData: true,
+      body,
+    });
+  },
+
+  async deliverCertificate(token: string, certificateId: number): Promise<AdminApplicationDetail> {
+    return request<AdminApplicationDetail>(`/admin/certificates/${certificateId}/deliver`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({}),
+    });
+  },
+
+  async feedback(token: string): Promise<CustomerFeedback[]> {
+    return request<CustomerFeedback[]>("/admin/feedback", { token });
+  },
+
   async auditLogs(token: string, id: string): Promise<AuditLog[]> {
     const detail = await this.applicationDetail(token, id);
     return detail.audit_logs;
@@ -225,6 +285,34 @@ export const adminApi = {
       method: "PATCH",
       token,
       body: JSON.stringify({ status }),
+    });
+  },
+};
+
+export const certificateApi = {
+  async list(token: string, applicationId: string): Promise<Certificate[]> {
+    return request<Certificate[]>(`/applications/${applicationId}/certificates`, { token });
+  },
+
+  async download(token: string, certificateId: number): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/applications/certificates/${certificateId}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error("Could not download certificate");
+    }
+    return response.blob();
+  },
+
+  async submitFeedback(
+    token: string,
+    applicationId: string,
+    payload: { rating: number; feedback?: string | null },
+  ): Promise<CustomerFeedback> {
+    return request<CustomerFeedback>(`/applications/${applicationId}/feedback`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
     });
   },
 };

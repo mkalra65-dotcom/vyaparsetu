@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Card, PageShell } from "@/components/ui";
+import { ButtonLink, Card, PageShell } from "@/components/ui";
 import { DocumentUpload } from "@/components/DocumentUpload";
 import { applicationApi } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -67,6 +67,9 @@ export default function ApplicationDetailPage() {
           <p className="mt-2 text-sm text-slate-600">
             Status: <span className="font-semibold">{application.status.replaceAll("_", " ")}</span>
           </p>
+          <div className="mt-4">
+            <ButtonLink href={`/applications/${params.id}/tracking`}>Track application</ButtonLink>
+          </div>
         </div>
 
         {application.customer_clarification_message ? (

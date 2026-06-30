@@ -5,15 +5,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.enums import ApplicationStatus
 from app.schemas.application import ApplicationRead
 from app.schemas.audit_log import ApplicationAuditLogRead
+from app.schemas.certificate import CertificateRead, FeedbackRead
 from app.schemas.document import DocumentRead
 from app.schemas.document_extraction import DocumentExtractionRead
+from app.schemas.tracking import ApplicationTimelineEventRead, GovernmentQueryRead
 
 ADMIN_ALLOWED_STATUSES = {
     ApplicationStatus.DOCUMENTS_PENDING,
     ApplicationStatus.UNDER_REVIEW,
     ApplicationStatus.CLARIFICATION_REQUIRED,
+    ApplicationStatus.READY_FOR_FILING,
+    ApplicationStatus.FILING_IN_PROGRESS,
+    ApplicationStatus.FILED,
     ApplicationStatus.APPROVED,
     ApplicationStatus.REJECTED,
+    ApplicationStatus.CERTIFICATE_DELIVERED,
+    ApplicationStatus.COMPLETED,
 }
 
 
@@ -30,6 +37,10 @@ class AdminDocumentRead(DocumentRead):
 
 class AdminApplicationDetail(ApplicationRead):
     documents: list[AdminDocumentRead]
+    certificates: list[CertificateRead] = []
+    feedback: list[FeedbackRead] = []
+    timeline_events: list[ApplicationTimelineEventRead] = []
+    government_queries: list[GovernmentQueryRead] = []
     audit_logs: list[ApplicationAuditLogRead] = []
 
 

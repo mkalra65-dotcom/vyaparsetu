@@ -67,6 +67,30 @@ class Application(Base):
 
     owner = relationship("User", back_populates="applications")
     documents = relationship("Document", back_populates="application", cascade="all, delete-orphan")
+    certificates = relationship(
+        "Certificate",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="desc(Certificate.uploaded_at)",
+    )
+    feedback_entries = relationship(
+        "CustomerFeedback",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="desc(CustomerFeedback.created_at)",
+    )
+    timeline_events = relationship(
+        "ApplicationTimelineEvent",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="desc(ApplicationTimelineEvent.created_at)",
+    )
+    government_queries = relationship(
+        "GovernmentQuery",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="desc(GovernmentQuery.created_at)",
+    )
     audit_logs = relationship(
         "ApplicationAuditLog",
         back_populates="application",

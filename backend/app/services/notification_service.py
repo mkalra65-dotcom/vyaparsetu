@@ -21,6 +21,9 @@ CUSTOMER_MESSAGES = {
         "Documents received",
         "Your documents have been received and our team will review your application.",
     ),
+    "ready_for_filing": ("Ready for filing", "Your application is ready for filing."),
+    "filing_in_progress": ("Filing in progress", "Your filing is in progress."),
+    "filed": ("Filing submitted", "Your filing has been submitted."),
     "clarification_required": (
         "Clarification required",
         "Our team needs more information. Please check the clarification message on your application.",
@@ -33,6 +36,11 @@ CUSTOMER_MESSAGES = {
         "Application rejected",
         "Your application has been rejected. Please review the message from our team.",
     ),
+    "certificate_delivered": (
+        "Certificate delivered",
+        "Your certificate is now available in your VyaparSetu portal.",
+    ),
+    "completed": ("Application completed", "Your application is complete."),
     "document_uploaded": ("Document uploaded", "Your document was uploaded successfully."),
 }
 
