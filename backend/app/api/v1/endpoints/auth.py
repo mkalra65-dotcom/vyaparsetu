@@ -1,11 +1,11 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
 from fastapi import Depends
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.models.user import User
@@ -37,8 +37,17 @@ def login(
     access_token = create_access_token(
         subject=str(user.id),
         expires_delta=access_token_expires,
+        token_version=user.token_version,
     )
     return Token(access_token=access_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(db: DbSession, current_user: CurrentUser) -> None:
+    current_user.token_version += 1
+    current_user.last_logout_at = datetime.now(UTC)
+    db.add(current_user)
+    db.commit()
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)

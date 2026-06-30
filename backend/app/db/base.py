@@ -6,6 +6,7 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.enums import ApplicationStatus, ServiceType
 from app.models.lead import Lead
 from app.models.notification import Notification
+from app.models.whatsapp import ConversationMessage, ConversationSession, WhatsAppContact
 from app.models.user import User
 
 __all__ = [
@@ -13,10 +14,13 @@ __all__ = [
     "ApplicationAuditLog",
     "ApplicationStatus",
     "Base",
+    "ConversationMessage",
+    "ConversationSession",
     "Document",
     "DocumentExtraction",
     "Lead",
     "Notification",
     "ServiceType",
     "User",
+    "WhatsAppContact",
 ]

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ButtonLink, Card, PageShell } from "@/components/ui";
-import { applicationApi, notificationApi } from "@/lib/api";
+import { applicationApi, authApi, notificationApi } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
 import type { Application } from "@/types/api";
 import type { Notification } from "@/types/api";
@@ -34,7 +34,11 @@ export default function DashboardPage() {
     notificationApi.mine(token).then(setNotifications).catch(() => undefined);
   }, [router]);
 
-  function logout() {
+  async function logout() {
+    const token = getToken();
+    if (token) {
+      await authApi.logout(token).catch(() => undefined);
+    }
     clearToken();
     router.push("/");
   }

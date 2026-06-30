@@ -81,6 +81,13 @@ export const authApi = {
   async me(token: string): Promise<User> {
     return request<User>("/users/me", { token });
   },
+
+  async logout(token: string): Promise<void> {
+    return request<void>("/auth/logout", {
+      method: "POST",
+      token,
+    });
+  },
 };
 
 export const applicationApi = {

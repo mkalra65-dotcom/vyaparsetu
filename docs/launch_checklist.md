@@ -4,6 +4,8 @@
 
 - [ ] `.env.production` created from `.env.production.example`
 - [ ] Strong `SECRET_KEY` configured
+- [ ] `JWT_ISSUER` configured
+- [ ] `JWT_AUDIENCE` configured
 - [ ] Strong PostgreSQL password configured
 - [ ] `DATABASE_URL` embeds a strong non-default database password
 - [ ] Production startup safety checks pass with `ENVIRONMENT=production`
@@ -17,6 +19,9 @@
 - [ ] Pricing values configured
 - [ ] `ADMIN_NOTIFICATION_EMAIL` configured
 - [ ] Real notification provider intentionally disabled or configured
+- [ ] `WHATSAPP_PROVIDER=mock` unless a real WhatsApp provider is implemented and ready
+- [ ] If `WHATSAPP_PROVIDER` is not `mock`, strong `WHATSAPP_VERIFY_TOKEN` is configured
+- [ ] If `WHATSAPP_PROVIDER` is not `mock`, webhook URL is registered with the WhatsApp provider
 
 ## Security Review
 

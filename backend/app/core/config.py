@@ -12,6 +12,7 @@ DEFAULT_POSTGRES_PASSWORD = "vyaparsetu"
 MIN_DATABASE_PASSWORD_LENGTH = 12
 PLACEHOLDER_VALUES = {
     "",
+    "change-this-whatsapp-verify-token",
     "change-this-secret-key",
     "replace-with-a-long-random-secret",
     "replace-with-64-char-random-secret",
@@ -46,6 +47,8 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = Field(default=DEFAULT_SECRET_KEY)
     JWT_ALGORITHM: str = "HS256"
+    JWT_ISSUER: str = "vyaparsetu-api"
+    JWT_AUDIENCE: str = "vyaparsetu-web"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     BACKEND_CORS_ORIGINS: list[AnyUrl] = []
@@ -61,6 +64,8 @@ class Settings(BaseSettings):
     DOCUMENT_INTELLIGENCE_ENABLED: bool = True
     OPENAI_API_KEY: str | None = None
     NOTIFICATION_PROVIDER: str = "mock"
+    WHATSAPP_PROVIDER: str = "mock"
+    WHATSAPP_VERIFY_TOKEN: str = "change-this-whatsapp-verify-token"
     ADMIN_NOTIFICATION_EMAIL: str | None = None
     PRICING_GST: str = "Contact us"
     PRICING_FSSAI: str = "Contact us"
@@ -157,6 +162,22 @@ class Settings(BaseSettings):
                 errors.append(
                     f"AI_PROVIDER={self.AI_PROVIDER} is not production-ready or implemented. "
                     "Disable DOCUMENT_INTELLIGENCE_ENABLED or configure a production-ready provider."
+                )
+        whatsapp_provider = self.WHATSAPP_PROVIDER.strip().lower()
+        if whatsapp_provider != "mock":
+            whatsapp_verify_token = self.WHATSAPP_VERIFY_TOKEN.strip()
+            if not whatsapp_provider:
+                errors.append("WHATSAPP_PROVIDER is required when WhatsApp is enabled")
+            elif whatsapp_provider not in {"meta", "cloud_api", "twilio", "360dialog"}:
+                errors.append(f"Unsupported WHATSAPP_PROVIDER: {self.WHATSAPP_PROVIDER}")
+            else:
+                errors.append(
+                    f"WHATSAPP_PROVIDER={self.WHATSAPP_PROVIDER} is configured but not integrated yet"
+                )
+            if self.is_placeholder(whatsapp_verify_token) or len(whatsapp_verify_token) < 16:
+                errors.append(
+                    "WHATSAPP_VERIFY_TOKEN must be a non-placeholder value of at least "
+                    "16 characters when WhatsApp is enabled"
                 )
         if not self.BACKEND_CORS_ORIGINS:
             errors.append("BACKEND_CORS_ORIGINS must contain the production HTTPS origin")

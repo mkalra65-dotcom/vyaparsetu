@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -16,9 +17,22 @@ def get_password_hash(password: str) -> str:
     return password_context.hash(password)
 
 
-def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
-    expire = datetime.now(UTC) + (
+def create_access_token(
+    subject: str,
+    expires_delta: timedelta | None = None,
+    token_version: int = 1,
+) -> str:
+    issued_at = datetime.now(UTC)
+    expire = issued_at + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    payload = {"exp": expire, "sub": subject}
+    payload = {
+        "aud": settings.JWT_AUDIENCE,
+        "exp": expire,
+        "iat": issued_at,
+        "iss": settings.JWT_ISSUER,
+        "jti": uuid4().hex,
+        "sub": subject,
+        "token_version": token_version,
+    }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)

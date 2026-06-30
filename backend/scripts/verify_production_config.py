@@ -17,7 +17,16 @@ def main() -> None:
         raise AssertionError(f"Missing production files: {missing}")
 
     env_example = Path(".env.production.example").read_text()
-    for key in ["SECRET_KEY", "DATABASE_URL", "BACKEND_CORS_ORIGINS", "NEXT_PUBLIC_API_BASE_URL"]:
+    for key in [
+        "SECRET_KEY",
+        "DATABASE_URL",
+        "BACKEND_CORS_ORIGINS",
+        "NEXT_PUBLIC_API_BASE_URL",
+        "JWT_ISSUER",
+        "JWT_AUDIENCE",
+        "WHATSAPP_PROVIDER",
+        "WHATSAPP_VERIFY_TOKEN",
+    ]:
         if key not in env_example:
             raise AssertionError(f"Missing {key} in .env.production.example")
     for forbidden in [
@@ -37,6 +46,8 @@ def main() -> None:
         "NON_PRODUCTION_ENVIRONMENTS",
         "PRODUCTION_READY_AI_PROVIDERS",
         "DOCUMENT_INTELLIGENCE_ENABLED",
+        "WHATSAPP_PROVIDER",
+        "WHATSAPP_VERIFY_TOKEN",
         "validate_database_password",
         "DATABASE_URL password",
     ]:
@@ -64,6 +75,7 @@ def main() -> None:
         "manual review mode",
         "extraction jobs",
         "`DATABASE_URL` is missing, omits a password",
+        "`WHATSAPP_PROVIDER` is not `mock` and `WHATSAPP_VERIFY_TOKEN`",
         "Strict-Transport-Security",
         "returns a `301` redirect to HTTPS",
     ]:
@@ -77,6 +89,10 @@ def main() -> None:
         "`DOCUMENT_INTELLIGENCE_ENABLED=false` for manual review mode",
         "If `DOCUMENT_INTELLIGENCE_ENABLED=true`, `AI_PROVIDER` is not `mock`",
         "If `DOCUMENT_INTELLIGENCE_ENABLED=true`, `AI_PROVIDER` is implemented and marked production-ready",
+        "`JWT_ISSUER` configured",
+        "`JWT_AUDIENCE` configured",
+        "`WHATSAPP_PROVIDER=mock` unless a real WhatsApp provider is implemented and ready",
+        "If `WHATSAPP_PROVIDER` is not `mock`, strong `WHATSAPP_VERIFY_TOKEN` is configured",
         "HTTP redirects to HTTPS",
         "HSTS header is present",
     ]:

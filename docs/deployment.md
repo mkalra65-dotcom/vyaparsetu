@@ -29,9 +29,12 @@ Required secrets:
 - `POSTGRES_PASSWORD`
 - `DATABASE_URL`
 - `SECRET_KEY`
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
 - `BACKEND_CORS_ORIGINS`
 - `NEXT_PUBLIC_API_BASE_URL`
 - credentials for the selected production-ready AI provider when `DOCUMENT_INTELLIGENCE_ENABLED=true`
+- `WHATSAPP_VERIFY_TOKEN` when `WHATSAPP_PROVIDER` is not `mock`
 - `ADMIN_NOTIFICATION_EMAIL`
 
 Generate `SECRET_KEY` with:
@@ -48,6 +51,8 @@ Production startup safety checks are enforced by the backend. With `ENVIRONMENT=
 - `DATABASE_URL` is missing, omits a password, or embeds a default, placeholder, or shorter-than-12-character password.
 - `DOCUMENT_INTELLIGENCE_ENABLED=true` and `AI_PROVIDER=mock`.
 - `DOCUMENT_INTELLIGENCE_ENABLED=true` and `AI_PROVIDER` is unsupported, unimplemented, or not marked production-ready by the application.
+- `WHATSAPP_PROVIDER` is not `mock` and `WHATSAPP_VERIFY_TOKEN` is missing, placeholder, or shorter than 16 characters.
+- `WHATSAPP_PROVIDER` is not `mock` and the selected provider is unsupported or not integrated.
 - `BACKEND_CORS_ORIGINS` is empty, contains localhost, or uses non-HTTPS origins.
 - `NEXT_PUBLIC_API_BASE_URL` is missing, points to localhost, or uses non-HTTPS.
 - `ADMIN_NOTIFICATION_EMAIL` is missing.
@@ -56,6 +61,12 @@ Production startup safety checks are enforced by the backend. With `ENVIRONMENT=
 Do not bypass these checks for production. If startup fails, correct the environment instead of changing application code.
 
 Document intelligence is optional. Production can start safely with `DOCUMENT_INTELLIGENCE_ENABLED=false`, which puts document handling into manual review mode, skips extraction jobs, and logs a startup warning. If document intelligence is enabled in production, a real implemented provider must be marked production-ready first. The mock provider remains development-only.
+
+WhatsApp intake is optional. Production can start safely with `WHATSAPP_PROVIDER=mock`, which keeps outbound WhatsApp delivery in development/mock mode while preserving webhook verification and message persistence for controlled testing. Before enabling a real WhatsApp provider, configure a strong `WHATSAPP_VERIFY_TOKEN`, confirm the selected provider is implemented, and register the webhook URL:
+
+```text
+https://your-domain.com/api/v1/whatsapp/webhook
+```
 
 ## PostgreSQL Setup
 
