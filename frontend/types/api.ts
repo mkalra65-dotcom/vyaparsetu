@@ -74,7 +74,7 @@ export type DocumentMetadata = {
   mime_type: string;
   file_size: number;
   uploaded_by_user_id: number;
-  ai_processing_status: "pending" | "processed";
+  ai_processing_status: "pending" | "processed" | "manual_review";
   requires_attention: boolean;
   created_at: string;
 };

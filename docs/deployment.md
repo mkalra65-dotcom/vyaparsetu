@@ -19,7 +19,7 @@ This guide prepares a production deployment on a VPS using Docker Compose, Postg
    - `A your-domain.com -> VPS_PUBLIC_IP`
    - `A www.your-domain.com -> VPS_PUBLIC_IP`
 2. Wait for DNS propagation.
-3. Update `nginx/nginx.conf` SSL server block with the final domain before enabling HTTPS.
+3. Replace `your-domain.com` and `www.your-domain.com` in `nginx/nginx.conf` with the final domain before starting production Nginx.
 
 ## Secrets
 
@@ -31,6 +31,7 @@ Required secrets:
 - `SECRET_KEY`
 - `BACKEND_CORS_ORIGINS`
 - `NEXT_PUBLIC_API_BASE_URL`
+- credentials for the selected production-ready AI provider when `DOCUMENT_INTELLIGENCE_ENABLED=true`
 - `ADMIN_NOTIFICATION_EMAIL`
 
 Generate `SECRET_KEY` with:
@@ -40,6 +41,21 @@ openssl rand -hex 32
 ```
 
 Never commit `.env.production`.
+
+Production startup safety checks are enforced by the backend. With `ENVIRONMENT=production`, the backend exits during startup if:
+- `SECRET_KEY` is default, placeholder, missing, or shorter than 32 characters.
+- `POSTGRES_PASSWORD` is default, placeholder, missing, or shorter than 12 characters.
+- `DATABASE_URL` is missing, omits a password, or embeds a default, placeholder, or shorter-than-12-character password.
+- `DOCUMENT_INTELLIGENCE_ENABLED=true` and `AI_PROVIDER=mock`.
+- `DOCUMENT_INTELLIGENCE_ENABLED=true` and `AI_PROVIDER` is unsupported, unimplemented, or not marked production-ready by the application.
+- `BACKEND_CORS_ORIGINS` is empty, contains localhost, or uses non-HTTPS origins.
+- `NEXT_PUBLIC_API_BASE_URL` is missing, points to localhost, or uses non-HTTPS.
+- `ADMIN_NOTIFICATION_EMAIL` is missing.
+- `ENVIRONMENT` is not a recognized value. `production`, `prod`, and `live` all enable production checks.
+
+Do not bypass these checks for production. If startup fails, correct the environment instead of changing application code.
+
+Document intelligence is optional. Production can start safely with `DOCUMENT_INTELLIGENCE_ENABLED=false`, which puts document handling into manual review mode, skips extraction jobs, and logs a startup warning. If document intelligence is enabled in production, a real implemented provider must be marked production-ready first. The mock provider remains development-only.
 
 ## PostgreSQL Setup
 
@@ -54,6 +70,13 @@ Connection pooling is configured in backend settings:
 For higher traffic, move PostgreSQL to a managed database and set `DATABASE_URL` accordingly.
 
 ## Docker Deployment
+
+Before starting production services, make sure certificates exist under:
+
+```text
+certbot/conf/live/your-domain.com/fullchain.pem
+certbot/conf/live/your-domain.com/privkey.pem
+```
 
 Build and start production services:
 
@@ -79,14 +102,32 @@ Check services:
 docker compose -f docker-compose.prod.yml ps
 curl https://your-domain.com/health
 curl https://your-domain.com/health/db
+curl -I http://your-domain.com/
+curl -I https://your-domain.com/
 ```
+
+Expected results:
+- `http://your-domain.com/` returns a `301` redirect to HTTPS.
+- `https://your-domain.com/` includes `Strict-Transport-Security`.
 
 ## SSL Setup
 
-Recommended: Certbot with webroot.
+Recommended: Certbot with webroot. The production Nginx config keeps `/.well-known/acme-challenge/` available over HTTP and redirects all other HTTP traffic to HTTPS. The HTTPS server block is active by default, so certificates must exist before production Nginx starts successfully.
 
-1. Start Nginx on port 80.
-2. Issue certificates:
+1. Replace `your-domain.com` in `nginx/nginx.conf`.
+2. Issue certificates before the first production Nginx start. One option is a temporary standalone Certbot run while port 80 is free:
+
+```bash
+docker run --rm \
+  -p 80:80 \
+  -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
+  certbot/certbot certonly \
+  --standalone \
+  -d your-domain.com \
+  -d www.your-domain.com
+```
+
+3. For renewals, use the webroot challenge:
 
 ```bash
 docker run --rm \
@@ -99,8 +140,7 @@ docker run --rm \
   -d www.your-domain.com
 ```
 
-3. Enable the HTTPS server block in `nginx/nginx.conf`.
-4. Reload Nginx:
+4. Reload Nginx after renewals:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec nginx nginx -s reload

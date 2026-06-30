@@ -324,7 +324,11 @@ export default function AdminApplicationReviewPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="mt-2 text-sm text-slate-600">Extraction is pending.</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {document.ai_processing_status === "manual_review"
+                      ? "Document intelligence is disabled. Review this document manually."
+                      : "Extraction is pending."}
+                  </p>
                 )}
               </div>
             ))}

@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.db.session import engine
 from app.middleware.request_context import RateLimitMiddleware, RequestContextMiddleware
 
+logger = logging.getLogger("vyaparsetu.startup")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -31,6 +33,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def log_document_intelligence_mode() -> None:
+    if not settings.DOCUMENT_INTELLIGENCE_ENABLED:
+        logger.warning(
+            "document_intelligence_disabled_manual_review_mode",
+            extra={"environment": settings.ENVIRONMENT},
+        )
 
 
 @app.exception_handler(Exception)
@@ -62,6 +73,9 @@ def application_metrics() -> dict[str, str | int]:
         "environment": settings.ENVIRONMENT,
         "status": "ok",
         "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
+        "document_intelligence_mode": (
+            "enabled" if settings.DOCUMENT_INTELLIGENCE_ENABLED else "manual_review"
+        ),
     }
 
 

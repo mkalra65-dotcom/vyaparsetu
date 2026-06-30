@@ -126,7 +126,11 @@ export default function ApplicationDetailPage() {
                   {(document.file_size / 1024).toFixed(1)} KB · {document.mime_type}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-600">
-                  {document.requires_attention ? "Document requires attention" : `Document ${document.ai_processing_status}`}
+                  {document.requires_attention
+                    ? "Document requires attention"
+                    : document.ai_processing_status === "manual_review"
+                      ? "Manual review mode"
+                      : `Document ${document.ai_processing_status}`}
                 </p>
               </div>
             ))}

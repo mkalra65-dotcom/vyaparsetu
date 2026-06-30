@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.db.base_class import Base
 
 
@@ -41,6 +42,8 @@ class Document(Base):
 
     @property
     def ai_processing_status(self) -> str:
+        if not settings.DOCUMENT_INTELLIGENCE_ENABLED:
+            return "manual_review"
         return "processed" if self.extractions else "pending"
 
     @property

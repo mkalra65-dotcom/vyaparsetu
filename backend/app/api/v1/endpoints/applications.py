@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.models.application import Application
 from app.models.document import Document
 from app.models.user import User
@@ -271,5 +272,6 @@ async def upload_application_document(
         notify_application_event(db, application, application.status)
     db.commit()
     db.refresh(document)
-    background_tasks.add_task(process_document_extraction, document.id)
+    if settings.DOCUMENT_INTELLIGENCE_ENABLED:
+        background_tasks.add_task(process_document_extraction, document.id)
     return document

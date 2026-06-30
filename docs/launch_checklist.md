@@ -5,7 +5,14 @@
 - [ ] `.env.production` created from `.env.production.example`
 - [ ] Strong `SECRET_KEY` configured
 - [ ] Strong PostgreSQL password configured
+- [ ] `DATABASE_URL` embeds a strong non-default database password
+- [ ] Production startup safety checks pass with `ENVIRONMENT=production`
+- [ ] `DOCUMENT_INTELLIGENCE_ENABLED=false` for manual review mode, or production AI provider is approved
+- [ ] If `DOCUMENT_INTELLIGENCE_ENABLED=true`, `AI_PROVIDER` is not `mock`
+- [ ] If `DOCUMENT_INTELLIGENCE_ENABLED=true`, `AI_PROVIDER` is implemented and marked production-ready
+- [ ] Required provider secrets are configured when document intelligence is enabled
 - [ ] `BACKEND_CORS_ORIGINS` restricted to production domain
+- [ ] `BACKEND_CORS_ORIGINS` contains only HTTPS origins and no localhost origins
 - [ ] `NEXT_PUBLIC_API_BASE_URL` points to production HTTPS API
 - [ ] Pricing values configured
 - [ ] `ADMIN_NOTIFICATION_EMAIL` configured
@@ -48,8 +55,9 @@
 - [ ] DNS points to VPS
 - [ ] HTTP challenge path works
 - [ ] SSL certificate issued
-- [ ] HTTPS server block enabled
-- [ ] HTTP redirects to HTTPS after SSL is confirmed
+- [ ] HTTPS server block uses the production domain and certificate paths
+- [ ] HTTP redirects to HTTPS except `/.well-known/acme-challenge/`
+- [ ] HSTS header is present on HTTPS responses
 - [ ] Certificate renewal scheduled
 
 ## Product Smoke Tests
